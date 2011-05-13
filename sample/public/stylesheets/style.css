@@ -1,0 +1,68 @@
+
+body {
+  margin: 0px 0px 0px 0px;
+  padding: 0px 0px 0px 0px;
+
+  font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+}
+
+a {
+  color: #00B7FF;
+}
+
+h1 {
+	  margin: 0px 0px 0px 0px;
+  padding: 0px 0px 0px 0px;
+	
+}
+
+#tools {
+margin: 0px 0px 0px 0px;
+padding: 0px 0px 0px 0px;
+height:50px;
+background-color:green;
+position:relative;
+}
+
+
+.right{
+	
+	float:right;
+	margin-right:10px;
+	cursor:pointer;
+}
+#tools.drawing {
+	
+	background-color:red;
+}
+
+#body {
+float:left;
+background-color:transparent;
+height:600px;
+width:100%;
+position:relative;
+}
+
+#canvas {
+}
+
+.playitem {
+position:absolute;
+}
+
+.toolitem {
+float:left;
+height:20px;
+}
+
+.hovering {
+  color: red;
+}
+
+.drawmode {
+position:absolute;
+background-color:red;
+top:10px;
+right:30px;
+}
