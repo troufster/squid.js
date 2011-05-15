@@ -6,6 +6,11 @@ FILES = [
 'framework.js',
 'vector.js',
 'hashmap.js',
+'shape.js',
+'tools/common.js',
+'tools/pencil.js',
+'tools/single.js',
+'tools/freehand.js',
 'prototypes.js',
 'squid.js'
 ]

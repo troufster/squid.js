@@ -450,9 +450,307 @@ Zone.addToGrid = function(e, grid, cs) {
   }
 };
 
-Base.plugin(Zone, 'Zone');
+Base.plugin(Zone);
 
 
+})();
+(function(){
+  var Base = require('Base');
+  /*
+   * A shape in the scene
+   */
+  function Shape(data){
+    this.type = data.type;
+    this.index = data.count;
+    this.data = [];     
+    this.origin = null;     
+    this.fillStyle = data.type.fillStyle;
+    this.strokeStyle = data.type.strokeStyle;
+    this.label = "";
+    this.state = data.state;           
+    this.children = [];     
+  };
+  
+  Base.plugin(Shape);
+})();
+(function(){
+  var Base = require('Base');
+  
+  /**
+   * Show anchors under mouse
+   */
+  function anchorsUnderMouse(ev, tool) {
+   
+      var nearest = nearestAnchor.call(this,ev, tool);
+      
+      if(nearest && !tool.started) {
+        if(nearest[0] < 30) {
+          //Draw
+          var n = nearest[1];
+          context.beginPath();
+          context.arc(n[0],n[1],3,0,Math.PI*2,true);
+          context.closePath();
+          context.stroke();
+          
+        }
+       
+      }
+  };
+  
+  /**
+   * Get nearest anchors for a vector
+   */
+  function nearestAnchorVec(vec) {
+    return nearestAnchor({_x : vec[0], _y : vec[1]});
+  };
+  
+  /**
+   * Get nearest anchors for an event
+   */
+  function nearestAnchor(ev) {  
+    var evvec = [ev._x, ev._y],
+        tool = this.tool;
+
+    if(!tool.started) this.render();
+      var closest = this.grid.getClosest(evvec),
+      cl = closest ? closest.length : 0,
+      dists = [];
+      
+      while(cl--) {
+        if(closest[cl][3] != 'anchor') continue;
+        var dist = Vector.distSqrt(closest[cl], evvec);
+        dists.push([dist, closest[cl]]);
+      }
+     
+     var nearest = dists.sort(function(a,b){ return a[0] -b[0];})[0];
+     
+     return nearest;
+  };
+  
+  
+  /**
+   * Sample an event
+   */
+  function sample(ev){
+    var s = this.shapes,
+        c = this.shapedata.count;
+    
+    if(s[c]) s[c].data.push([ev._x,ev._y]);
+  }
+  
+  var Common = {
+      anchorsUnderMouse : anchorsUnderMouse,
+      nearestAnchorVec : nearestAnchorVec,
+      nearestAnchor : nearestAnchor,
+      sample : sample
+  }
+  
+  Base.plugin(Common, 'CommonTools');
+})();
+(function(){
+  var Base = require('Base');
+
+  function Pencil(){
+    this.started = false;
+  };
+
+  Pencil.prototype = {
+    mousedown: function(ev){
+      var ctx = this.ctx;
+      
+      ctx.shadowBlur = 1;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(ev._x, ev._y);
+      this.tool.pencil.started = true;
+    },
+    mousemove: function(ev){
+      var pencil = this.tool.pencil;
+      if(pencil.started) {
+        var ctx = this.ctx;
+        ctx.lineTo(ev._x, ev._y);
+        ctx.stroke();
+      }
+    },
+
+    mouseup: function(ev){
+      var pencil = this.tool.pencil;
+      if(pencil.started) {
+        pencil.mousemove.call(this, ev);
+        pencil.started = false;
+      }
+    }
+
+  };
+
+  Base.plugin(Pencil);
+})();
+(function(){
+  var Base = require('Base'),
+      Shape = require('Shape');
+  /*
+   * Tool used for creating standalone shapes
+   */
+  function SingleTool() {};
+  
+  SingleTool.prototype = {
+    mouseup : function() {},
+    mousemove : function() {},
+    mousedown : function(ev) {            
+      var shape = new Shape(this.shapedata);
+            
+      shape.origin = [ev._x, ev._y];            
+      this.shapes[this.shapedata.count] = shape;
+      this.shapedata.count++;
+                       
+      this.render();
+    }
+  };
+  
+  Base.plugin(SingleTool);
+})();
+ (function(){
+  var Base = require('Base'),
+      Common = require('CommonTools'),
+      Pencil = require('Pencil'),
+      Shape = require('Shape'),
+      anchorsUnderMouse = Common.anchorsUnderMouse,
+      nearestAnchor = Common.nearestAnchor;
+  
+  
+  
+  /**
+   * Freehand line sampler
+   */
+  function Sampler() {
+    this.started = false;
+    this.samplenext = true; 
+    this.sample = Common.sample;
+    this.pencil = new Pencil();
+  }
+  
+  Sampler.prototype = {
+      mousemove : function(ev, tool){
+        var tool = this.tool;        
+        
+        //Show anchors under mouse
+        anchorsUnderMouse.call(this,ev);
+        
+       
+        
+        
+        tool.pencil.mousemove.call(this,ev);
+        if(!tool.samplenext || !tool.started)return;
+      
+        tool.sample.call(this,ev);
+        tool.samplenext = false;
+        setTimeout(function(){ tool.samplenext = true;}, 30);
+      },
+      
+      mousedown : function(ev){
+        tool = this.tool;
+        tool.started = true;
+        tool.pencil.mousedown.call(this,ev);
+        var shapedata = this.shapedata,
+            shapes = this.shapes;
+            
+        shapes[shapedata.count] = new Shape(shapedata);
+        var nearest = nearestAnchor.call(this,ev);
+       
+        if(nearest && nearest[0] < 30) {
+          tool.attachto = nearest[1];
+        } else {
+          tool.attachto = null;
+        }
+        
+        
+        
+      },
+      mouseup : function(ev, tool){
+        var tool = this.tool;
+        tool.pencil.mouseup.call(this,ev);
+        var shapes = this.shapes,
+            shapedata = this.shapedata;
+        
+        tool.sample.call(this,ev);
+        if (tool.started) {
+          tool.started = false;
+          var shape = shapes[shapedata.count];
+          if(shape.data.length < 5) {
+            delete shapes[shapedata.count];
+            this.render();
+            return;
+          }
+                
+          var origin;
+          
+          
+         if(tool.attachto){
+           //The current shape should be merged with the shape
+           //to attach to at the closest anchor
+           //With no start shape..
+           origin = Vector.toVector(tool.attachto);
+           var parent = shapes[tool.attachto[2]];
+           
+     
+           //Get a vector from anchor to parent origin to compensate..
+           var comp = Vector.sub(origin, parent.origin);
+           shape.data[0] = shape.origin = origin;
+           
+           for(var i = shape.data.length-1; i >= 0; i--){
+              var x = shape.data[i][0]-origin[0];
+              var y = shape.data[i][1]-origin[1];
+              shape.data[i] = Vector.add(comp,[x,y]);
+           }
+              
+           //Transfer data
+           parent.data = shape.data;
+           parent.type = shapedata.type;
+           parent.end = shapedata.end;
+           
+           //Delete this shape
+           delete shapes[shapedata.count];
+           
+         }
+          else{
+            shape.end = shapedata.end;
+            shape.start = shapedata.start;
+            origin = shape.data[0];
+            
+           //Todo: Actually select anchor that is closest to the drawn line components.. 
+            var anchors = shape.anchors,
+                //al = anchors ? anchors.length :0,
+                hits = [];
+            
+            for(var i = shape.data.length-1; i >= 0; i--){
+              var vec = shape.data[i];
+               al = anchors ? anchors.length :0;
+              while(al--) {
+                  var dist = Vector.distSqrt(vec, Vector.add(origin, anchors[al]));
+                  hits.push([dist, al]);
+              }
+            }
+            
+            var nearest = (hits.count > 0 ? hits.sort(function(a,b){ return a[0]-b[0];})[0][1] : null);
+                                   
+            
+            shape.origin = origin = (anchors ? Vector.add(origin, anchors[0]) : origin);
+            for(var i = shape.data.length-1; i >= 0; i--){
+               var x = shape.data[i][0]-origin[0];
+               var y = shape.data[i][1]-origin[1];
+               shape.data[i] = [x,y];
+            }
+            shapedata.count++;
+            
+            
+          }
+          this.render();
+        }
+      }
+  };
+  
+  Base.plugin(Sampler, 'Freehand');
 })();
 /**
  * Prototypes library
@@ -523,12 +821,20 @@ Base.plugin(Zone, 'Zone');
   //Vector implementation,
   Vector = require('Vector'),
   
+  //Single shape tool
+  SingleTool = require('SingleTool'),
+  
+  //Freehand shape tool
+  Freehand = require('Freehand'),
+  
+  //Shape implementation
+  Shape = require('Shape'),
+  
   //Hold all declared shapes
   _shapetype = {},
   
   //Internal functions
   fn = {
-	  			
     /*
      * Normalizes events across browsers
      * @param MouseEvent ev The event to normalize 
@@ -564,23 +870,20 @@ Base.plugin(Zone, 'Zone');
       // Find the canvas element.
       var _canvas = document.getElementById(selector);
       if (!_canvas) {
-        throw new Error('Error: I cannot find the canvas element!');
-        return;
+        throw 'Error: I cannot find the canvas element!';
       }
       
       //Fix for selecting text on canvas clicks
-      _canvas.onselectstart = function () { return false; }
+      _canvas.onselectstart = function () { return false; };
    
       if (!_canvas.getContext) {
-        throw new Error('Error: no canvas.getContext!');
-        return;
+        throw 'Error: no canvas.getContext!';
       }
 
       // Get the 2D canvas context.
       var _ctx = canvas.getContext('2d');
       if (!_ctx) {
-        throw new Error('Error: failed to getContext!');
-        return;
+        throw 'Error: failed to getContext!';
       }
       
       return [_canvas, _ctx];
@@ -588,40 +891,7 @@ Base.plugin(Zone, 'Zone');
        
   };
       
-  /*
-   * A shape in the scene
-   */
-  function Shape(data){
-    this.type = data.type;
-	  this.index = data.count;
-	  this.data = [];	    
-	  this.origin = null;	    
-	  this.fillStyle = data.type.fillStyle;
-	  this.strokeStyle = data.type.strokeStyle;
-	  this.label = "";
-	  this.state = data.state;	    	   
-	  this.children = [];	    
-	};
-  
-	/*
-	 * Tool used for creating standalone shapes
-	 */
-	function SingleTool() {};
-	
-	SingleTool.prototype = {
-    mouseup : function() {},
-    mousemove : function() {},
-    mousedown : function(ev) {		        
-      var shape = new Shape(this.shapedata);
-		        
-      shape.origin = [ev._x, ev._y];		        
-      this.shapes[this.shapedata.count] = shape;
-      this.shapedata.count++;
-		        		       
-      this.render();
-    }
-	};
-  
+ 
   
   /*
    * Main 
@@ -635,7 +905,11 @@ Base.plugin(Zone, 'Zone');
     this.canvas = c[0];
     this.receiver = null;
     this.tool = null;
-    this.tools = { SingleTool : new SingleTool() };
+    this.tools = { 
+                    SingleTool : new SingleTool(),
+                    Freehand : new Freehand()
+    
+                  };
     this.shapes = {};
     this.drawmode = false;
     this.mousedown = false;
@@ -644,15 +918,15 @@ Base.plugin(Zone, 'Zone');
      * Normalize all events and bind to this scope 
      */
     function eventWrapper(ev) {
-    	ev = fn.eventProcessor(ev);
-    	self.canvasEvents.call(self,ev);
-    };
+      ev = fn.eventProcessor(ev);
+      self.canvasEvents.call(self,ev);
+    }
     
     //Attach events
     this.canvas.addEventListener('mousemove', eventWrapper, false);
     this.canvas.addEventListener('mousedown', eventWrapper, false);
     window.addEventListener('mouseup', eventWrapper,false);    
-  };
+  }
   
   /*
    * Sets this squid out of drawmode
@@ -668,7 +942,9 @@ Base.plugin(Zone, 'Zone');
 	  this.tool = tool;	  
 	  this.shapedata.type = _shapetype[shape];
 	  
-	  if(drawmode) this.drawmode = true;
+	  if(drawmode) { 
+      this.drawmode = true;
+    }
   };
   
   /*
@@ -696,7 +972,6 @@ Base.plugin(Zone, 'Zone');
 	        
 	    ctx.shadowBlur = (selected && thisshape.index == selected.index ? 9 : 1);     
 	
-	    
 	    //Call the shapes internal draw method in context of this squid
 	    thisshape.type.draw.call(this, thisshape);	      
 	   
@@ -727,8 +1002,8 @@ Base.plugin(Zone, 'Zone');
     //Pick if not drawing
     if(!this.drawmode ) return this.pick(ev); 
     
-    //Call tool with ev.type
-	  if(this.tool) this.tool[ev.type].call(this,ev);
+    //Call tool with ev.type and instance of tool
+	  if(this.tool) this.tool[ev.type].call(this, ev);
 	  
   };
   
@@ -766,6 +1041,10 @@ Base.plugin(Zone, 'Zone');
     s.call(this);
   };
   
+  Squid.prototype.prop = function(key, value) {
+    this.hasReceiver();
+    this.receiver[key] = value;
+  }
   /*
    * Sets the name of the shape being configured
    */
@@ -833,7 +1112,7 @@ Base.plugin(Zone, 'Zone');
 	  this.receiver.draw = draw;
   }
   
-  /*
+  /**
    * Handles picking of drawn shapes/controls
    */
   Squid.prototype.pick = function(ev){
@@ -847,25 +1126,30 @@ Base.plugin(Zone, 'Zone');
     
     
     //Control point highlighting of selected shape
+    //Mouse moving but not down
     if(ev.type == 'mousemove' && !mousedown) {    
       
-      
+     //Show hand if nearby shapes
      this.hover(ev);
      
+     //Return if no shape is selected
      if(!shapedata.selected) return;
      
-     var data = shapedata.selected.data;
-     var origin = shapedata.selected.origin;
-     var dl = data.length;
-     var selindex;
+     var data = shapedata.selected.data,
+         origin = shapedata.selected.origin,
+         dl = data.length,
+         selindex;
      
+     //Determine the closest control point of the currently selected shape
+     //Todo: use vector for this...
      while (dl--) {
-       var point = data[dl];
-       var xdist = ev._x -(point[0] + origin[0]);
-       var ydist = ev._y - (point[1] + origin[1]);
-       var unsqrt = xdist*xdist + ydist*ydist;
-       var sqrt = Math.sqrt(unsqrt);
+       var point = data[dl],
+           xdist = ev._x -(point[0] + origin[0]),
+           ydist = ev._y - (point[1] + origin[1]),
+           unsqrt = xdist*xdist + ydist*ydist,
+           sqrt = Math.sqrt(unsqrt);
       
+       //If point is close enough, set it as selected control
        if (sqrt < 10) {
          shapedata.selectedcontrol = dl;
          this.render();
@@ -874,7 +1158,7 @@ Base.plugin(Zone, 'Zone');
     }
     
     
- 
+    //Mouse is down, pick a shape for selection
     if(ev.type == 'mousedown'){
       this.mousedown = true;
      

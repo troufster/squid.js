@@ -302,7 +302,7 @@ Zone.addToGrid = function(e, grid, cs) {
   }
 };
 
-Base.plugin(Zone, 'Zone');
+Base.plugin(Zone);
 
 
 })();

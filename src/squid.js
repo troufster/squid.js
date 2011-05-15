@@ -9,12 +9,20 @@
   //Vector implementation,
   Vector = require('Vector'),
   
+  //Single shape tool
+  SingleTool = require('SingleTool'),
+  
+  //Freehand shape tool
+  Freehand = require('Freehand'),
+  
+  //Shape implementation
+  Shape = require('Shape'),
+  
   //Hold all declared shapes
   _shapetype = {},
   
   //Internal functions
   fn = {
-	  			
     /*
      * Normalizes events across browsers
      * @param MouseEvent ev The event to normalize 
@@ -50,23 +58,20 @@
       // Find the canvas element.
       var _canvas = document.getElementById(selector);
       if (!_canvas) {
-        throw new Error('Error: I cannot find the canvas element!');
-        return;
+        throw 'Error: I cannot find the canvas element!';
       }
       
       //Fix for selecting text on canvas clicks
-      _canvas.onselectstart = function () { return false; }
+      _canvas.onselectstart = function () { return false; };
    
       if (!_canvas.getContext) {
-        throw new Error('Error: no canvas.getContext!');
-        return;
+        throw 'Error: no canvas.getContext!';
       }
 
       // Get the 2D canvas context.
       var _ctx = canvas.getContext('2d');
       if (!_ctx) {
-        throw new Error('Error: failed to getContext!');
-        return;
+        throw 'Error: failed to getContext!';
       }
       
       return [_canvas, _ctx];
@@ -74,40 +79,7 @@
        
   };
       
-  /*
-   * A shape in the scene
-   */
-  function Shape(data){
-    this.type = data.type;
-	  this.index = data.count;
-	  this.data = [];	    
-	  this.origin = null;	    
-	  this.fillStyle = data.type.fillStyle;
-	  this.strokeStyle = data.type.strokeStyle;
-	  this.label = "";
-	  this.state = data.state;	    	   
-	  this.children = [];	    
-	};
-  
-	/*
-	 * Tool used for creating standalone shapes
-	 */
-	function SingleTool() {};
-	
-	SingleTool.prototype = {
-    mouseup : function() {},
-    mousemove : function() {},
-    mousedown : function(ev) {		        
-      var shape = new Shape(this.shapedata);
-		        
-      shape.origin = [ev._x, ev._y];		        
-      this.shapes[this.shapedata.count] = shape;
-      this.shapedata.count++;
-		        		       
-      this.render();
-    }
-	};
-  
+ 
   
   /*
    * Main 
@@ -121,7 +93,11 @@
     this.canvas = c[0];
     this.receiver = null;
     this.tool = null;
-    this.tools = { SingleTool : new SingleTool() };
+    this.tools = { 
+                    SingleTool : new SingleTool(),
+                    Freehand : new Freehand()
+    
+                  };
     this.shapes = {};
     this.drawmode = false;
     this.mousedown = false;
@@ -130,15 +106,15 @@
      * Normalize all events and bind to this scope 
      */
     function eventWrapper(ev) {
-    	ev = fn.eventProcessor(ev);
-    	self.canvasEvents.call(self,ev);
-    };
+      ev = fn.eventProcessor(ev);
+      self.canvasEvents.call(self,ev);
+    }
     
     //Attach events
     this.canvas.addEventListener('mousemove', eventWrapper, false);
     this.canvas.addEventListener('mousedown', eventWrapper, false);
     window.addEventListener('mouseup', eventWrapper,false);    
-  };
+  }
   
   /*
    * Sets this squid out of drawmode
@@ -154,7 +130,9 @@
 	  this.tool = tool;	  
 	  this.shapedata.type = _shapetype[shape];
 	  
-	  if(drawmode) this.drawmode = true;
+	  if(drawmode) { 
+      this.drawmode = true;
+    }
   };
   
   /*
@@ -182,7 +160,6 @@
 	        
 	    ctx.shadowBlur = (selected && thisshape.index == selected.index ? 9 : 1);     
 	
-	    
 	    //Call the shapes internal draw method in context of this squid
 	    thisshape.type.draw.call(this, thisshape);	      
 	   
@@ -213,8 +190,8 @@
     //Pick if not drawing
     if(!this.drawmode ) return this.pick(ev); 
     
-    //Call tool with ev.type
-	  if(this.tool) this.tool[ev.type].call(this,ev);
+    //Call tool with ev.type and instance of tool
+	  if(this.tool) this.tool[ev.type].call(this, ev);
 	  
   };
   
@@ -252,6 +229,10 @@
     s.call(this);
   };
   
+  Squid.prototype.prop = function(key, value) {
+    this.hasReceiver();
+    this.receiver[key] = value;
+  }
   /*
    * Sets the name of the shape being configured
    */
@@ -319,7 +300,7 @@
 	  this.receiver.draw = draw;
   }
   
-  /*
+  /**
    * Handles picking of drawn shapes/controls
    */
   Squid.prototype.pick = function(ev){
@@ -333,25 +314,30 @@
     
     
     //Control point highlighting of selected shape
+    //Mouse moving but not down
     if(ev.type == 'mousemove' && !mousedown) {    
       
-      
+     //Show hand if nearby shapes
      this.hover(ev);
      
+     //Return if no shape is selected
      if(!shapedata.selected) return;
      
-     var data = shapedata.selected.data;
-     var origin = shapedata.selected.origin;
-     var dl = data.length;
-     var selindex;
+     var data = shapedata.selected.data,
+         origin = shapedata.selected.origin,
+         dl = data.length,
+         selindex;
      
+     //Determine the closest control point of the currently selected shape
+     //Todo: use vector for this...
      while (dl--) {
-       var point = data[dl];
-       var xdist = ev._x -(point[0] + origin[0]);
-       var ydist = ev._y - (point[1] + origin[1]);
-       var unsqrt = xdist*xdist + ydist*ydist;
-       var sqrt = Math.sqrt(unsqrt);
+       var point = data[dl],
+           xdist = ev._x -(point[0] + origin[0]),
+           ydist = ev._y - (point[1] + origin[1]),
+           unsqrt = xdist*xdist + ydist*ydist,
+           sqrt = Math.sqrt(unsqrt);
       
+       //If point is close enough, set it as selected control
        if (sqrt < 10) {
          shapedata.selectedcontrol = dl;
          this.render();
@@ -360,7 +346,7 @@
     }
     
     
- 
+    //Mouse is down, pick a shape for selection
     if(ev.type == 'mousedown'){
       this.mousedown = true;
      
