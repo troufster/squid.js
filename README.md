@@ -5,10 +5,12 @@ a canvas. Either preset shapes, or freehand shapes, or custom tools or
 whatever. 
 
 The main point of squid is really to handle picking, moving,
-shape editing and so on on the canvas and tracking all the shapes in a way that makes it possible to do so in a simple and efficient way.
+shape editing on the canvas and tracking all the shapes in a way that makes 
+it possible to do so in a simple and efficient way.
 
 Feature roadmap:
-Shape editing
-Changes to shape declaration
-State specific drawing of shapes
-Anything! 
+
+* Shape editing
+* Changes to shape declaration
+* State specific drawing of shapes
+* Anything really! 
