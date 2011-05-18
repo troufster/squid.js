@@ -1,5 +1,5 @@
 (function() {
-  
+
   //Base library
   var Base = require('Base'),
   
@@ -134,7 +134,34 @@
       this.drawmode = true;
     }
   };
-  
+ 
+
+  Squid.prototype.toggleControls = function() {
+    this.shapedata.showcontrols = !this.shapedata.showcontrols;
+    this.render();
+  };
+
+  Squid.prototype.drawControls = function(shape) {
+    var sel = this.shapedata.selectedcontrol ? this.shapedata.selectedcontrol[1] : null;
+    var data = shape.data;
+    var dl = data.length;
+    var ctx = this.ctx;
+
+    while(dl--) {
+        ctx.strokeStyle = ctx.shadowColor = '#aaa';      //Highlight selected control point in selected shape
+      if(dl == sel && this.shapedata.selectedcontrol[0] == shape.index){ 
+        ctx.shadowColor = ctx.strokeStyle = '#5fb';
+      }  
+      var a = Vector.add(data[dl],shape.origin);
+      ctx.beginPath();
+      ctx.arc(a[0],a[1],3,0,Math.PI*2,true);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = ctx.shadowColor = (shape.parent ? shape.parent.strokeStyle : shape.strokeStyle);
+;
+  }; 
   /*
    * Render the current scene
    */
@@ -144,7 +171,8 @@
 	  
 	  var shapes = this.shapes,
 	      ctx = this.ctx,
-	      selected = this.shapedata.selected;
+	      selected = this.shapedata.selected,
+        self = this;
 	    
 	  //Reset the grid  
 	  this.grid.reset();
@@ -154,18 +182,38 @@
 	  for(var shape in shapes){
 	    var thisshape = shapes[shape];
 	    
-	    //color accordingly, or shade if selected
-	    ctx.fillStyle = thisshape.fillStyle;
-	    ctx.strokeStyle = ctx.shadowColor = thisshape.strokeStyle;
-	        
-	    ctx.shadowBlur = (selected && thisshape.index == selected.index ? 9 : 1);     
-	
-	    //Call the shapes internal draw method in context of this squid
-	    thisshape.type.draw.call(this, thisshape);	      
-	   
-	    //Add shape to grid
+      if(!thisshape.parent) {
+        //color accordingly, or shade if selected
+        ctx.fillStyle = thisshape.fillStyle;
+        ctx.strokeStyle = ctx.shadowColor = thisshape.strokeStyle;
+            
+        ctx.shadowBlur = (selected && thisshape.index == selected.index ? 9 : 1);     
+    
+        //Call the shapes internal draw method in context of this squid
+        thisshape.type.draw.call(this, thisshape);	      
+        var controls = false;
+
+       //Draw control
+        var hasSelection = (selected && (thisshape.index == selected.index)); 
+        if(this.shapedata.showcontrols && hasSelection) { 
+          this.drawControls(thisshape);
+          controls = true;
+        } 
+        //Draw and grid children
+        var cl = thisshape.children.length;
+        while(cl--){
+          var child = thisshape.children[cl];
+          child.type.draw.call(this, child);
+          if(controls) {
+            this.drawControls(child);
+          }
+        }    
+      }
+      
+      //Add shape to grid
 	    this.grid.addShape(thisshape);
-	      
+	    
+
 	  }	    
 	    
 	  //Recreate the grid hash
@@ -179,7 +227,9 @@
     state : null,
     count : 0,
     type : null,
-    selected : null
+    selected : null,
+    selectedcontrol : null,
+    showcontrols : false
   };
   
   /*
@@ -239,7 +289,6 @@
   Squid.prototype.name = function(name) {
 	  _shapetype[name] = { name : name } ;
 	  this.receiver = _shapetype[name];	  
-	  
   };
   
   /*
@@ -327,21 +376,29 @@
          origin = shapedata.selected.origin,
          dl = data.length,
          selindex;
-     
-     //Determine the closest control point of the currently selected shape
-     //Todo: use vector for this...
-     while (dl--) {
-       var point = data[dl],
-           xdist = ev._x -(point[0] + origin[0]),
-           ydist = ev._y - (point[1] + origin[1]),
-           unsqrt = xdist*xdist + ydist*ydist,
-           sqrt = Math.sqrt(unsqrt);
       
-       //If point is close enough, set it as selected control
-       if (sqrt < 10) {
-         shapedata.selectedcontrol = dl;
-         this.render();
-       }
+     var shapesToCheck = [];
+     shapesToCheck.push(shapedata.selected);
+     shapesToCheck = shapesToCheck.concat(shapedata.selected.children);
+
+     var len = shapesToCheck.length;
+     var evvec = [ev._x, ev._y];
+     while(len--) {
+       var thisshape  = shapesToCheck[len];
+       var data = thisshape.data;
+       var origin = thisshape.origin;
+       var dl = data.length;
+       while(dl--) {
+        var point = data[dl];
+        var opoint = Vector.add(point, origin);
+        var sqrt = Vector.distSqrt(evvec, opoint);
+
+        if (sqrt < 10) {
+          shapedata.selectedcontrol = [thisshape.index, dl, thisshape.parent.index]
+          this.render();
+          return;
+        }
+       }       
      }
     }
     
@@ -364,12 +421,16 @@
         if(sqrt < 35) {
           
           //Clicked near enough a shape origin. Set it to selected
-         
+          //if(shapes[point[2]].parent) return; //Dont pick children
           shapedata.selected = shapes[point[2]];      
           
+          //If picked child, set parent as selected
+          if(shapedata.selected.parent) {
+            shapedata.selected = shapedata.selected.parent;
+          }          
                  
           //Set label into gui box
-          $('#txtlabel').val(shapedata.selected.label);
+          //$('#txtlabel').val(shapedata.selected.label);
           
           this.render();
           picked = true;
@@ -388,30 +449,33 @@
    
     else if(ev.type == 'mousemove' && !shapedata.showcontrols && mousedown && shapedata.selected) {
       //Move shape
-      var clicked = [ev._x, ev._y];
-      
-      if(Vector.distSqrt(clicked, shapedata.selected.origin) > 50) return;
+      var clicked = [ev._x, ev._y],
+          mover = shapedata.selected;
+      if(mover.parent) return;      
+      if(Vector.distSqrt(clicked,mover.origin) > 50) return;
        
-      shapedata.selected.origin = [ev._x, ev._y];
-     
+        var cl = mover.children.length;
+        //Move children if any
+        while(cl--){
+          var child = mover.children[cl];
+          var comp = Vector.sub(mover.origin, child.origin);
+         child.origin = Vector.sub(clicked, comp);
+        }
+        
+       mover.origin = clicked;
       this.render();
     
     }
     
     else if(ev.type == 'mousemove' & shapedata.showcontrols && mousedown && shapedata.selected && shapedata.selectedcontrol != null) {
        //Move that control & render!
-      var shape = shapedata.selected;
-     
-      if (shapedata.selectedcontrol === 0 ){
-        //Move origin (the entire shape moves)
-        shape.origin = [ev._x, ev._y];
-      } else {
-      
-      shape.data[shapedata.selectedcontrol] = [ev._x - shape.origin[0], ev._y - shape.origin[1]];
-      
-      }
-      this.render();
-      
+     // var shape = shapedata.selected;
+     var shape = this.shapes[shapedata.selectedcontrol[0]];
+
+      if (shapedata.selectedcontrol[1] > 0 ){
+        shape.data[shapedata.selectedcontrol[1]] = [ev._x - shape.origin[0], ev._y - shape.origin[1]];
+        this.render();
+      } 
     }
     
     else  {
@@ -419,7 +483,10 @@
      
     }
     
-    
+    if(shapedata.selectedcontrol && ev.type == 'mouseup') {
+      //shapedata.selectedcontrol = null;
+      this.render();
+    }    
   };
   
   /* 
@@ -432,7 +499,8 @@
     
     document.body.style.cursor = 'pointer';
   };
-  
+ 
+  Squid.Vector = Vector; 
   window.Squid = Squid;
   
   

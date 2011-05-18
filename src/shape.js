@@ -13,6 +13,7 @@
     this.label = "";
     this.state = data.state;           
     this.children = [];     
+    this.parent = null;
   };
   
   Base.plugin(Shape);

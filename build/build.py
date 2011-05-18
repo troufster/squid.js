@@ -53,7 +53,7 @@ def build(files):
     print "*" * 40
 
     text = compress(text)
-    output(text, "squid.js.min")
+    output(text, "squid.min.js")
     output(uctext, "squid.js")
 
 def main(argv=None):

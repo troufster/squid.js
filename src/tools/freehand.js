@@ -3,6 +3,7 @@
       Common = require('CommonTools'),
       Pencil = require('Pencil'),
       Shape = require('Shape'),
+      Vector = require('Vector'),
       anchorsUnderMouse = Common.anchorsUnderMouse,
       nearestAnchor = Common.nearestAnchor;
   
@@ -75,31 +76,23 @@
           
           
          if(tool.attachto){
-           //The current shape should be merged with the shape
-           //to attach to at the closest anchor
-           //With no start shape..
-           origin = Vector.toVector(tool.attachto);
-           var parent = shapes[tool.attachto[2]];
-           
-     
-           //Get a vector from anchor to parent origin to compensate..
-           var comp = Vector.sub(origin, parent.origin);
-           shape.data[0] = shape.origin = origin;
-           
-           for(var i = shape.data.length-1; i >= 0; i--){
-              var x = shape.data[i][0]-origin[0];
-              var y = shape.data[i][1]-origin[1];
-              shape.data[i] = Vector.add(comp,[x,y]);
-           }
-              
-           //Transfer data
-           parent.data = shape.data;
-           parent.type = shapedata.type;
-           parent.end = shapedata.end;
-           
-           //Delete this shape
-           delete shapes[shapedata.count];
-           
+          //The current shapes origin should be the closest anchor, and be added as a child
+           //of the parent shape.
+          origin = Vector.toVector(tool.attachto);
+          var parent = shape.parent =  shapes[tool.attachto[2]];
+          
+          //Get a vector from anchor to parent origin to compensate child position
+          //var comp = Vector.sub(origin, parent.origin);
+          shape.data[0] = shape.origin = origin;//Vector.sub(origin, comp);
+          
+          //Add as child
+          for(var i = shape.data.length-1; i>=0; i--) {
+            var x = shape.data[i][0]-origin[0];
+            var y = shape.data[i][1]-origin[1];
+            shape.data[i] = [x,y];
+          }
+          parent.children.push(shape);
+          shapedata.count++;
          }
           else{
             shape.end = shapedata.end;

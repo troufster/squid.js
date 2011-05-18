@@ -90,9 +90,8 @@ Zone.prototype.addShape = function(shape) {
       dl = d.length,
       e = this.ent,
       o = shape.origin;
-  
   if(!o) return;
-  
+
   this.ent.push([o[0], o[1], shape.index, null]);
   
   while(dl--) {
@@ -101,7 +100,7 @@ Zone.prototype.addShape = function(shape) {
     this.ent.push([td[0] + o[0], td[1] + o[1], shape.index, dl]);
   }
     
-  var a = shape.anchors,
+  var a = shape.type.anchors,
       al = (a ? a.length : 0);
   
   while(al--) {

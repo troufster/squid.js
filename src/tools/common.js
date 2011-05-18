@@ -1,12 +1,14 @@
 (function(){
-  var Base = require('Base');
+  var Base = require('Base'),
+      Vector = require('Vector');
   
   /**
    * Show anchors under mouse
    */
-  function anchorsUnderMouse(ev, tool) {
-   
-      var nearest = nearestAnchor.call(this,ev, tool);
+  function anchorsUnderMouse(ev) {
+      var tool = this.tool,
+          context = this.ctx,
+          nearest = nearestAnchor.call(this, ev);
       
       if(nearest && !tool.started) {
         if(nearest[0] < 30) {

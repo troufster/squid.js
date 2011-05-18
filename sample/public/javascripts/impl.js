@@ -1,13 +1,39 @@
  (function(S){
 	 
 	 var Squid = new S({ canvas : 'canvas'});
-	 
+  var Vector = S.Vector;	
+
+  var drawLib = {
+    EndArrow: function(shape) {
+    var ctx = this.ctx,
+        data = shape.data,
+        dl = data.length,
+        last = data[dl-1],
+        prev = data[dl-3];
+
+      var origin = Vector.add(shape.origin, last);
+      var direction = Vector.sub(prev, last);
+
+      ctx.save();
+      ctx.translate(origin[0], origin[1]);
+      ctx.rotate(Vector.heading(direction) - (Math.PI/2));
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.lineTo(-10,0);
+      ctx.lineTo(0,-10);
+      ctx.lineTo(10,0);
+      ctx.lineTo(0,0);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
 	 Squid.shape(function() {
 	   
 		 this.name('Star');		 
 		 this.states(['NoFill', 'HalfFill', 'Fill']);
 		 this.color('#f00', '#f00');		 
-     this.anchors([[0,20],[20,0],[0,-20],[-20,0]]);		 
+     this.anchors([[-10,-20],[0,0], [20,5],[5,20],[0,40],[-15,20],[-35,15],[-15,0]]);
 		 this.draw(function(shape) {	
 			 	var context = this.ctx;
 			 	
@@ -35,7 +61,7 @@
      this.name('FreehandLine');
      this.states(['Solid', 'Dashed']);
      this.color('#0f0', '#0f0');
-     this.prop('dash', false);
+     this.prop('end', 'EndArrow');
 
      this.draw(function(shape) {
        
@@ -73,7 +99,7 @@
       ctx.stroke();
       ctx.restore();   
       
-
+      drawLib[shape.type.end].call(this, shape);
      });
     this.done(); 
 
@@ -99,4 +125,8 @@
   });
    
 	 
+  $('#Controls').click(function(evt){
+    Squid.toggleControls();
+  });
+
  })(Squid);
