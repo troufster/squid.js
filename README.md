@@ -1,4 +1,4 @@
-squid.js 
+#squid.js 
 
   HTML5 Canvas based shape/line framework
 
