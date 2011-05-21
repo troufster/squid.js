@@ -15,17 +15,21 @@
   //Freehand shape tool
   Freehand = require('Freehand'),
   
+  //Line shape tool
+  Line = require('Line'),
+
   //Shape implementation
   Shape = require('Shape'),
-  
+
   //Hold all declared shapes
   _shapetype = {},
   
   //Internal functions
   fn = {
-    /*
+    /**
      * Normalizes events across browsers
-     * @param MouseEvent ev The event to normalize 
+     * @param {MouseEvent} ev The event to normalize 
+     * @private
      */
     eventProcessor : function(ev) {
       //Firefox
@@ -40,8 +44,10 @@
       return ev;
     },
     
-    /*
+    /**
      * Stops an event from bubbling on
+     * @param {MouseEvent} ev Event
+     * @private
      */
     stopEvent : function(evt){
       if (evt.stopPropagation) {
@@ -51,8 +57,10 @@
       }
     },       
     
-    /*
+    /**
      * Try to locate a canvas and get it's 2d context
+     * @param {String} selector Id string of canvas to attach to
+     * @private
      */
     initCtx : function(selector) {
       // Find the canvas element.
@@ -69,7 +77,7 @@
       }
 
       // Get the 2D canvas context.
-      var _ctx = canvas.getContext('2d');
+      var _ctx = _canvas.getContext('2d');
       if (!_ctx) {
         throw 'Error: failed to getContext!';
       }
@@ -81,8 +89,15 @@
       
  
   
-  /*
-   * Main 
+  /**
+   * Creates a new squid
+   * 
+   * options:
+   *  options.canvas : the id of the canvas this squid should work on
+   *  options.gridsize : size of the internal spatial hash grid
+   *
+   * @constructor 
+   * @param {object} options Squid options
    */
   function Squid(options) {
     var self = this,
@@ -95,8 +110,9 @@
     this.tool = null;
     this.tools = { 
                     SingleTool : new SingleTool(),
-                    Freehand : new Freehand()
-    
+                    Freehand : new Freehand(),
+                    Line : new Line()
+                     
                   };
     this.shapes = {};
     this.drawmode = false;
@@ -116,15 +132,21 @@
     window.addEventListener('mouseup', eventWrapper,false);    
   }
   
-  /*
+  /**  
    * Sets this squid out of drawmode
+   * and into select mode
+   * @this {Squid}
    */
   Squid.prototype.select = function() {
 	  this.drawmode = false;
   };
   
-  /*
+  /**
    * Set the current tool to use
+   * @param {Tool} tool Tool instance
+   * @param {ShapeType} shape The type of shape to use with the tool
+   * @param {bool} drawmode Also set drawmode
+   * @this {Squid}
    */
   Squid.prototype.setTool = function(tool, shape, drawmode) {
 	  this.tool = tool;	  
@@ -135,12 +157,21 @@
     }
   };
  
-
+  /**
+   * Toggles showing of selected shape's control points
+   * @this {Squid}
+   */
   Squid.prototype.toggleControls = function() {
     this.shapedata.showcontrols = !this.shapedata.showcontrols;
     this.render();
   };
 
+  /**
+   * Draws controls points of a shape
+   * @param {Shape} shape shape to draw control points for
+   * @private
+   * @this {Squid}
+   */
   Squid.prototype.drawControls = function(shape) {
     var sel = this.shapedata.selectedcontrol ? this.shapedata.selectedcontrol[1] : null;
     var data = shape.data;
@@ -162,8 +193,10 @@
     ctx.strokeStyle = ctx.shadowColor = (shape.parent ? shape.parent.strokeStyle : shape.strokeStyle);
 ;
   }; 
-  /*
-   * Render the current scene
+
+  /**
+   * Render/redraw the current scene
+   * @this {Squid}
    */
   Squid.prototype.render = function() {
     //reset canvas
@@ -232,8 +265,9 @@
     showcontrols : false
   };
   
-  /*
+  /**
    * Main mouse event handler 
+   * @private
    */
   Squid.prototype.canvasEvents = function(ev) {
    
@@ -245,10 +279,17 @@
 	  
   };
   
+  /**
+   * Is there something selected?
+   */
   Squid.prototype.hasSelection = function() {
     return !!this.shapedata.selected;
   };
   
+  /** 
+   * The current selected shape
+   * @returns {Shape} selected shape
+   */
   Squid.prototype.selectedShape = function() {
     return this.shapedata.selected;
   };
@@ -272,18 +313,23 @@
     this.render();
   };
   
-  /*
-   * Registers a new shape 
+  /**
+   * Registers a new shape during configuration
+   * @param {function} s Shape declaration function to be called in context of Squid
    */
   Squid.prototype.shape = function(s) {
     s.call(this);
   };
   
+  /**
+   * Sets a shape property during configuratin
+   */ 
   Squid.prototype.prop = function(key, value) {
     this.hasReceiver();
     this.receiver[key] = value;
-  }
-  /*
+  };
+
+  /**
    * Sets the name of the shape being configured
    */
   Squid.prototype.name = function(name) {
@@ -291,23 +337,24 @@
 	  this.receiver = _shapetype[name];	  
   };
   
-  /*
-   * Finishes configuration
+  /**
+   * Finishes configuration of a shape
    */
   Squid.prototype.done = function() {
     this.receiver = null;
   };
   
-  /*
+  /**
    * Checks if there is a shape being configured
    */
   Squid.prototype.hasReceiver = function() {
 	  if(!this.receiver) throw new Error("No shape active for configuration");
 	  return !!this.receiver;
-  }
+  };
   
-  /*
+  /**
    * Set a shape's states
+   * Todo : implement state specific handlers for shape
    */
   Squid.prototype.states = function(states) {
 	  if(this.receiver.state) throw new Error("States already set for this shape");
@@ -320,8 +367,10 @@
 	  
   };
   
-  /* 
-   * Set a shape's stroke/fill colours
+  /** 
+   * Set a shape's stroke/fill colours during configuration
+   * @param {RGBcolor} stroke Stroke color
+   * @param {RGBcolor} fill Fill color
    */
   Squid.prototype.color = function(stroke, fill) {
 	  this.hasReceiver();
@@ -332,25 +381,41 @@
 		  this.receiver.fillStyle = fill;
 	  }
   };
-  
-  /*
-   * Set a shape's anchors (for attaching child shapes)
+
+  //Todo: document
+  Squid.prototype.onCreate = function(callback) {
+    this.hasReceiver();
+    this.receiver.onCreate = callback;
+  };
+  /**
+   * Set a shape's anchors during configuration (for attaching child shapes)
+   * @param {[Vector]} a Array of anchor vectors
    */
   Squid.prototype.anchors = function(a) {
     this.hasReceiver();
     this.receiver.anchors = a;
   };
   
-  /*
-   * Sets a shape's draw method
+  /**
+   * Sets a shape's draw method during configuration
+   * @param {function} draw Draw callback called in context of squid with shape as argument
    */
-  Squid.prototype.draw = function(draw) {
+  Squid.prototype.setDraw = function(draw) {
 	  this.hasReceiver();
 	  this.receiver.draw = draw;
   }
   
   /**
+   * Removes current selection (Shape/Control poing)
+   * Todo: implement
+   */
+  Squid.prototype.removeSelected = function() {
+  
+  };
+
+  /**
    * Handles picking of drawn shapes/controls
+   * @private
    */
   Squid.prototype.pick = function(ev){
     
@@ -394,7 +459,7 @@
         var sqrt = Vector.distSqrt(evvec, opoint);
 
         if (sqrt < 10) {
-          shapedata.selectedcontrol = [thisshape.index, dl, thisshape.parent.index]
+          shapedata.selectedcontrol = thisshape.parent ? [thisshape.index, dl, thisshape.parent.index] : [thisshape.index, dl, 0];
           this.render();
           return;
         }
@@ -406,8 +471,8 @@
     //Mouse is down, pick a shape for selection
     if(ev.type == 'mousedown'){
       this.mousedown = true;
-     
-      var closest = this.grid.getClosest([ev._x, ev._y]);
+      var evvec = [ev._x, ev._y]; 
+      var closest = this.grid.getClosest(evvec);
       var picked = false;
       
       var cl = closest ? closest.length : 0;   
@@ -423,7 +488,6 @@
           //Clicked near enough a shape origin. Set it to selected
           //if(shapes[point[2]].parent) return; //Dont pick children
           shapedata.selected = shapes[point[2]];      
-          
           //If picked child, set parent as selected
           if(shapedata.selected.parent) {
             shapedata.selected = shapedata.selected.parent;
@@ -442,7 +506,7 @@
       
       
       //If we reach this, nothing was picked so deselect
-      shapedata.selected = shapedata.selectedcontrol = null;
+      shapedata.selected = shapedata.selectedcontrol  =  null;
       this.render();
     }
     
@@ -451,8 +515,22 @@
       //Move shape
       var clicked = [ev._x, ev._y],
           mover = shapedata.selected;
+
+      //Dont allow moving of child shapes
       if(mover.parent) return;      
-      if(Vector.distSqrt(clicked,mover.origin) > 50) return;
+
+      //Make sure click was actually near the shape§
+
+      var closest = this.grid.getClosest([ev._x, ev._y]);
+      var closefound = false; 
+      var cll = closest ? closest.length : 0; 
+      while(cll--) {
+        var dist = Vector.distSqrt(clicked, closest[cll]);
+        if(dist > 50) { continue; }
+        closefound = true;
+      }
+
+      if(!closefound) return;
        
         var cl = mover.children.length;
         //Move children if any
@@ -462,7 +540,7 @@
          child.origin = Vector.sub(clicked, comp);
         }
         
-       mover.origin = clicked;
+       mover.origin =clicked; 
       this.render();
     
     }
@@ -489,8 +567,9 @@
     }    
   };
   
-  /* 
+  /**
    * Show a pointer cursor if there are objects nearby in the grid
+   * @private
    */
   Squid.prototype.hover = function(ev){
     var closest = this.grid.getClosest([ev._x, ev._y]);
@@ -500,6 +579,7 @@
     document.body.style.cursor = 'pointer';
   };
  
+  //Expose 
   Squid.Vector = Vector; 
   window.Squid = Squid;
   

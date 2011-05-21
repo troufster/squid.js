@@ -601,18 +601,20 @@ Base.plugin(Zone);
     mousemove : function() {},
     mousedown : function(ev) {            
       var shape = new Shape(this.shapedata);
-            
       shape.origin = [ev._x, ev._y];            
       this.shapes[this.shapedata.count] = shape;
       this.shapedata.count++;
-                       
+      if(this.shapedata.type.onCreate){
+        this.shapedata.type.onCreate.call(this, shape);
+      }
       this.render();
     }
   };
   
   Base.plugin(SingleTool);
 })();
- (function(){
+ 
+(function(){
   var Base = require('Base'),
       Common = require('CommonTools'),
       Pencil = require('Pencil'),
@@ -747,6 +749,150 @@ Base.plugin(Zone);
   
   Base.plugin(Sampler, 'Freehand');
 })();
+(function(){
+  var Base = require('Base');
+
+  function Liner() {
+    this.started = false;  
+  };
+
+  Liner.prototype = {
+    mousedown : function(ev){
+      var tool = this.tool.liner;
+      tool.started = true;
+      tool.mousemove.call(this,ev);
+    },
+    mouseup : function(ev) {
+
+    },
+    mousemove : function(ev) {
+      var tool = this.tool.liner;
+      var ctx = this.ctx;
+      if(tool.started) {
+        this.render();
+      }
+      var shape = this.shapes[this.shapedata.count];
+
+      if(!shape) return;
+
+      var origin = shape.origin;
+
+      if(!origin) return;
+
+      var data = shape.data;
+      var lastdata = shape.data[shape.data.length-1];
+      ctx.moveTo(lastdata[0] + origin[0], lastdata[1] + origin[1]);
+      ctx.lineTo(ev._x, ev._y);
+      ctx.stroke();
+    },
+    end : function() {
+      var tool = this.tool.liner;
+      tool.started = false;
+    }
+  };
+
+Base.plugin(Liner);
+})();
+(function () {
+  var Base = require('Base'),
+      Common = require('CommonTools'),
+      Shape = require('Shape'),
+      Liner = require('Liner'),
+      Vector = require('Vector'),
+      anchorsUnderMouse = Common.anchorsUnderMouse,
+      nearestAnchor = Common.nearestAnchor;
+
+  function LineSampler() {
+    this.attachto = null;
+    this.started = false;
+    this.justclicked = false;
+    this.sample = Common.sample;
+    this.liner = new Liner();
+  };
+
+  LineSampler.prototype = {
+    mousedown : function(ev) {
+      var tool = this.tool;
+      tool.liner.mousedown.call(this,ev); 
+      if(!tool.started) {
+        var nearest = nearestAnchor.call(this,ev);
+        var shape = new Shape(this.shapedata);
+        if(nearest && nearest[0] < 30) {
+          tool.attachto = nearest[1];
+          shape.origin = Vector.toVector(nearest[1]);
+        } else {
+          tool.attachto = null;
+          shape.origin = [ev._x, ev._y];
+        }
+
+        this.shapes[this.shapedata.count] = shape;
+        tool.started = true;
+      }
+      
+      
+      //Doubleclick
+      if(tool.justclicked) {
+        tool.liner.end.call(this, ev); 
+        var shape = this.shapes[this.shapedata.count];
+
+        //Delete if not enough samples were collected
+        if(shape.data.length < 1) {
+          delete this.shapes[this.shapedata.count];
+          this.render();
+          return;
+        }
+
+        if(tool.attachto) {
+          //Current shape should be merged with parent at closest anchor
+          var origin = Vector.toVector(tool.attachto);
+          var parent = this.shapes[tool.attachto[2]];
+         
+          var comp = Vector.sub(origin, parent.origin);
+
+          //Make sure shape starts at anchor
+          shape.data[0] = [0,0];
+
+          //Compensate for new anchor
+          //for (var i = shape.data.length-1; i >= 0; i--) {
+          //  shape.data[i] = Vector.add(comp, shape.data[i]); 
+          //};
+
+          //Add parent/child
+          parent.children.push(shape);
+          shape.parent = parent;
+
+
+        } else {
+          this.shapedata.count++;
+        }
+
+        tool.started = false;
+        this.render();
+        return; 
+      } 
+        
+      var origin = this.shapes[this.shapedata.count].origin;
+        
+      if(origin) {
+        tool.sample.call(this,{_x : ev._x - origin[0], _y : ev._y - origin[1]});
+      }
+        
+      //Start doubleclick timer
+      tool.justclicked = true;
+      setTimeout(function(){ tool.justclicked = false; }, 250);
+     
+    },
+    mouseup : function(ev) {
+    },
+    mousemove : function(ev) {
+      anchorsUnderMouse.call(this, ev);
+      this.tool.liner.mousemove.call(this,ev); 
+        
+    }
+  };
+
+Base.plugin(LineSampler, 'Line');
+})();
 /**
  * Prototypes library
  */
@@ -822,17 +968,21 @@ Base.plugin(Zone);
   //Freehand shape tool
   Freehand = require('Freehand'),
   
+  //Line shape tool
+  Line = require('Line'),
+
   //Shape implementation
   Shape = require('Shape'),
-  
+
   //Hold all declared shapes
   _shapetype = {},
   
   //Internal functions
   fn = {
-    /*
+    /**
      * Normalizes events across browsers
-     * @param MouseEvent ev The event to normalize 
+     * @param {MouseEvent} ev The event to normalize 
+     * @private
      */
     eventProcessor : function(ev) {
       //Firefox
@@ -847,8 +997,10 @@ Base.plugin(Zone);
       return ev;
     },
     
-    /*
+    /**
      * Stops an event from bubbling on
+     * @param {MouseEvent} ev Event
+     * @private
      */
     stopEvent : function(evt){
       if (evt.stopPropagation) {
@@ -858,8 +1010,10 @@ Base.plugin(Zone);
       }
     },       
     
-    /*
+    /**
      * Try to locate a canvas and get it's 2d context
+     * @param {String} selector Id string of canvas to attach to
+     * @private
      */
     initCtx : function(selector) {
       // Find the canvas element.
@@ -876,7 +1030,7 @@ Base.plugin(Zone);
       }
 
       // Get the 2D canvas context.
-      var _ctx = canvas.getContext('2d');
+      var _ctx = _canvas.getContext('2d');
       if (!_ctx) {
         throw 'Error: failed to getContext!';
       }
@@ -888,8 +1042,15 @@ Base.plugin(Zone);
       
  
   
-  /*
-   * Main 
+  /**
+   * Creates a new squid
+   * 
+   * options:
+   *  options.canvas : the id of the canvas this squid should work on
+   *  options.gridsize : size of the internal spatial hash grid
+   *
+   * @constructor 
+   * @param {object} options Squid options
    */
   function Squid(options) {
     var self = this,
@@ -902,8 +1063,9 @@ Base.plugin(Zone);
     this.tool = null;
     this.tools = { 
                     SingleTool : new SingleTool(),
-                    Freehand : new Freehand()
-    
+                    Freehand : new Freehand(),
+                    Line : new Line()
+                     
                   };
     this.shapes = {};
     this.drawmode = false;
@@ -923,15 +1085,21 @@ Base.plugin(Zone);
     window.addEventListener('mouseup', eventWrapper,false);    
   }
   
-  /*
+  /**  
    * Sets this squid out of drawmode
+   * and into select mode
+   * @this {Squid}
    */
   Squid.prototype.select = function() {
 	  this.drawmode = false;
   };
   
-  /*
+  /**
    * Set the current tool to use
+   * @param {Tool} tool Tool instance
+   * @param {ShapeType} shape The type of shape to use with the tool
+   * @param {bool} drawmode Also set drawmode
+   * @this {Squid}
    */
   Squid.prototype.setTool = function(tool, shape, drawmode) {
 	  this.tool = tool;	  
@@ -942,12 +1110,21 @@ Base.plugin(Zone);
     }
   };
  
-
+  /**
+   * Toggles showing of selected shape's control points
+   * @this {Squid}
+   */
   Squid.prototype.toggleControls = function() {
     this.shapedata.showcontrols = !this.shapedata.showcontrols;
     this.render();
   };
 
+  /**
+   * Draws controls points of a shape
+   * @param {Shape} shape shape to draw control points for
+   * @private
+   * @this {Squid}
+   */
   Squid.prototype.drawControls = function(shape) {
     var sel = this.shapedata.selectedcontrol ? this.shapedata.selectedcontrol[1] : null;
     var data = shape.data;
@@ -969,8 +1146,10 @@ Base.plugin(Zone);
     ctx.strokeStyle = ctx.shadowColor = (shape.parent ? shape.parent.strokeStyle : shape.strokeStyle);
 ;
   }; 
-  /*
-   * Render the current scene
+
+  /**
+   * Render/redraw the current scene
+   * @this {Squid}
    */
   Squid.prototype.render = function() {
     //reset canvas
@@ -1039,8 +1218,9 @@ Base.plugin(Zone);
     showcontrols : false
   };
   
-  /*
+  /**
    * Main mouse event handler 
+   * @private
    */
   Squid.prototype.canvasEvents = function(ev) {
    
@@ -1052,10 +1232,17 @@ Base.plugin(Zone);
 	  
   };
   
+  /**
+   * Is there something selected?
+   */
   Squid.prototype.hasSelection = function() {
     return !!this.shapedata.selected;
   };
   
+  /** 
+   * The current selected shape
+   * @returns {Shape} selected shape
+   */
   Squid.prototype.selectedShape = function() {
     return this.shapedata.selected;
   };
@@ -1079,18 +1266,23 @@ Base.plugin(Zone);
     this.render();
   };
   
-  /*
-   * Registers a new shape 
+  /**
+   * Registers a new shape during configuration
+   * @param {function} s Shape declaration function to be called in context of Squid
    */
   Squid.prototype.shape = function(s) {
     s.call(this);
   };
   
+  /**
+   * Sets a shape property during configuratin
+   */ 
   Squid.prototype.prop = function(key, value) {
     this.hasReceiver();
     this.receiver[key] = value;
-  }
-  /*
+  };
+
+  /**
    * Sets the name of the shape being configured
    */
   Squid.prototype.name = function(name) {
@@ -1098,23 +1290,24 @@ Base.plugin(Zone);
 	  this.receiver = _shapetype[name];	  
   };
   
-  /*
-   * Finishes configuration
+  /**
+   * Finishes configuration of a shape
    */
   Squid.prototype.done = function() {
     this.receiver = null;
   };
   
-  /*
+  /**
    * Checks if there is a shape being configured
    */
   Squid.prototype.hasReceiver = function() {
 	  if(!this.receiver) throw new Error("No shape active for configuration");
 	  return !!this.receiver;
-  }
+  };
   
-  /*
+  /**
    * Set a shape's states
+   * Todo : implement state specific handlers for shape
    */
   Squid.prototype.states = function(states) {
 	  if(this.receiver.state) throw new Error("States already set for this shape");
@@ -1127,8 +1320,10 @@ Base.plugin(Zone);
 	  
   };
   
-  /* 
-   * Set a shape's stroke/fill colours
+  /** 
+   * Set a shape's stroke/fill colours during configuration
+   * @param {RGBcolor} stroke Stroke color
+   * @param {RGBcolor} fill Fill color
    */
   Squid.prototype.color = function(stroke, fill) {
 	  this.hasReceiver();
@@ -1139,25 +1334,41 @@ Base.plugin(Zone);
 		  this.receiver.fillStyle = fill;
 	  }
   };
-  
-  /*
-   * Set a shape's anchors (for attaching child shapes)
+
+  //Todo: document
+  Squid.prototype.onCreate = function(callback) {
+    this.hasReceiver();
+    this.receiver.onCreate = callback;
+  };
+  /**
+   * Set a shape's anchors during configuration (for attaching child shapes)
+   * @param {[Vector]} a Array of anchor vectors
    */
   Squid.prototype.anchors = function(a) {
     this.hasReceiver();
     this.receiver.anchors = a;
   };
   
-  /*
-   * Sets a shape's draw method
+  /**
+   * Sets a shape's draw method during configuration
+   * @param {function} draw Draw callback called in context of squid with shape as argument
    */
-  Squid.prototype.draw = function(draw) {
+  Squid.prototype.setDraw = function(draw) {
 	  this.hasReceiver();
 	  this.receiver.draw = draw;
   }
   
   /**
+   * Removes current selection (Shape/Control poing)
+   * Todo: implement
+   */
+  Squid.prototype.removeSelected = function() {
+  
+  };
+
+  /**
    * Handles picking of drawn shapes/controls
+   * @private
    */
   Squid.prototype.pick = function(ev){
     
@@ -1201,7 +1412,7 @@ Base.plugin(Zone);
         var sqrt = Vector.distSqrt(evvec, opoint);
 
         if (sqrt < 10) {
-          shapedata.selectedcontrol = [thisshape.index, dl, thisshape.parent.index]
+          shapedata.selectedcontrol = thisshape.parent ? [thisshape.index, dl, thisshape.parent.index] : [thisshape.index, dl, 0];
           this.render();
           return;
         }
@@ -1213,8 +1424,8 @@ Base.plugin(Zone);
     //Mouse is down, pick a shape for selection
     if(ev.type == 'mousedown'){
       this.mousedown = true;
-     
-      var closest = this.grid.getClosest([ev._x, ev._y]);
+      var evvec = [ev._x, ev._y]; 
+      var closest = this.grid.getClosest(evvec);
       var picked = false;
       
       var cl = closest ? closest.length : 0;   
@@ -1230,7 +1441,6 @@ Base.plugin(Zone);
           //Clicked near enough a shape origin. Set it to selected
           //if(shapes[point[2]].parent) return; //Dont pick children
           shapedata.selected = shapes[point[2]];      
-          
           //If picked child, set parent as selected
           if(shapedata.selected.parent) {
             shapedata.selected = shapedata.selected.parent;
@@ -1249,7 +1459,7 @@ Base.plugin(Zone);
       
       
       //If we reach this, nothing was picked so deselect
-      shapedata.selected = shapedata.selectedcontrol = null;
+      shapedata.selected = shapedata.selectedcontrol  =  null;
       this.render();
     }
     
@@ -1258,8 +1468,22 @@ Base.plugin(Zone);
       //Move shape
       var clicked = [ev._x, ev._y],
           mover = shapedata.selected;
+
+      //Dont allow moving of child shapes
       if(mover.parent) return;      
-      if(Vector.distSqrt(clicked,mover.origin) > 50) return;
+
+      //Make sure click was actually near the shape§
+
+      var closest = this.grid.getClosest([ev._x, ev._y]);
+      var closefound = false; 
+      var cll = closest ? closest.length : 0; 
+      while(cll--) {
+        var dist = Vector.distSqrt(clicked, closest[cll]);
+        if(dist > 50) { continue; }
+        closefound = true;
+      }
+
+      if(!closefound) return;
        
         var cl = mover.children.length;
         //Move children if any
@@ -1269,7 +1493,7 @@ Base.plugin(Zone);
          child.origin = Vector.sub(clicked, comp);
         }
         
-       mover.origin = clicked;
+       mover.origin =clicked; 
       this.render();
     
     }
@@ -1296,8 +1520,9 @@ Base.plugin(Zone);
     }    
   };
   
-  /* 
+  /**
    * Show a pointer cursor if there are objects nearby in the grid
+   * @private
    */
   Squid.prototype.hover = function(ev){
     var closest = this.grid.getClosest([ev._x, ev._y]);
@@ -1307,6 +1532,7 @@ Base.plugin(Zone);
     document.body.style.cursor = 'pointer';
   };
  
+  //Expose 
   Squid.Vector = Vector; 
   window.Squid = Squid;
   

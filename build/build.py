@@ -11,6 +11,8 @@ FILES = [
 'tools/pencil.js',
 'tools/single.js',
 'tools/freehand.js',
+'tools/liner.js',
+'tools/straight.js',
 'prototypes.js',
 'squid.js'
 ]

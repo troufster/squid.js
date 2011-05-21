@@ -9,7 +9,7 @@
         data = shape.data,
         dl = data.length,
         last = data[dl-1],
-        prev = data[dl-3];
+        prev = data[dl-2];
 
       var origin = Vector.add(shape.origin, last);
       var direction = Vector.sub(prev, last);
@@ -28,13 +28,28 @@
     }
   }
 
+  Squid.shape(function() {
+    this.name('Circle');
+    this.color('#f0f', '#f0f');
+    this.onCreate(function(shape) {
+      shape.data = [ [-10,-10],  [10,10]];
+    });
+    this.setDraw(function(shape) {
+      var ctx = this.ctx;
+      var dist = Vector.sub(shape.data[1], shape.data[0]);
+      var width = dist[0]; 
+      var height = dist[1]; 
+      ctx.drawEllipse(shape.origin[0]-10, shape.origin[1]-10, width, height); 
+    });
+    this.done();
+  });
 	 Squid.shape(function() {
 	   
 		 this.name('Star');		 
 		 this.states(['NoFill', 'HalfFill', 'Fill']);
 		 this.color('#f00', '#f00');		 
      this.anchors([[-10,-20],[0,0], [20,5],[5,20],[0,40],[-15,20],[-35,15],[-15,0]]);
-		 this.draw(function(shape) {	
+		 this.setDraw(function(shape) {	
 			 	var context = this.ctx;
 			 	
 			 	  context.save();
@@ -56,14 +71,70 @@
 		this.done();
  
 	 });
-	 
+	
+   Squid.shape(function() {
+    this.name('StraightLine');
+    this.color('#00f', '#00f');
+    this.prop('end', 'EndArrow');
+
+    this.setDraw(function(shape){
+      var shapedata = this.shapedata,
+          shapes = this.shapes,
+          s = shape.data,
+          sl = s.length,
+          osl = sl,
+          ctx = this.ctx,
+          dash = shape.dash;
+
+      if(sl <= 1) {
+        return;
+      }
+      
+      ctx.save();
+      ctx.translate(shape.origin[0], shape.origin[1]);
+      ctx.beginPath();
+
+      //Start at the last coordinate
+      sl--
+      var startpoint = s[sl];
+      ctx.moveTo(startpoint[0], startpoint[1]);
+
+      //For each coord in data
+      while(sl--) {
+         var a = s[sl];
+         if(!Vector.isVector(a)) continue;
+
+         //Dashzor
+         if(dash) {
+          if(sl == osl-2) {
+            ctx.dashedLine(startpoint[0], startpoint[1], a[0], a[1], 5);
+          } else {
+            ctx.dashedLine(s[sl+1][0], s[sl+1][1], a[0], a[1], 5);
+          }
+
+          continue;
+         }
+        
+         //Solid lienzor
+         ctx.lineTo(a[0], a[1]);
+
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      drawLib[shape.type.end].call(this, shape);
+    });
+
+    this.done();
+   });
+
    Squid.shape(function(){
      this.name('FreehandLine');
      this.states(['Solid', 'Dashed']);
      this.color('#0f0', '#0f0');
      this.prop('end', 'EndArrow');
 
-     this.draw(function(shape) {
+     this.setDraw(function(shape) {
        
        var shapedata = this.shapedata,
            shapes = this.shapes,
@@ -129,4 +200,13 @@
     Squid.toggleControls();
   });
 
+  $('#Line').click(function(evt) {
+    Squid.setTool(Squid.tools.Line, 'StraightLine', true);
+  });
+
+
+  $('#Dynamic').click(function(evt) {
+  //  Squid.setTool(Squid.tools.Line, 'StraightLine', true);
+    Squid.setTool(Squid.tools.SingleTool, 'Circle', true);
+  });
  })(Squid);
